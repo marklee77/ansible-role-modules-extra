@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: Mark Stillwell
+  description: Extra Modules for Ansible
+  license: GPLv2
+  min_ansible_version: 1.2
+dependencies: []

@@ -1,0 +1,118 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+Ansible module to modify system configuration with augeas.
+(c) 2014, Mark Stillwell <marklee@fortawesome.org>
+
+This file is part of Ansible
+
+Ansible is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Ansible is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+DOCUMENTATION = '''
+---
+module: augeas
+short_description: look up, add, update, or delete a configuration entry with
+augeas.
+description:
+     - use this module to look up, add, update, or delete a setting using augeas
+version_added: "1.6"
+notes:
+    - This module requires augtool.
+options:
+   paths:
+      - a list of key-value pairs for configuration settings to be applied in
+        order
+    required: false
+    default: null
+    aliases: []
+author: Mark Stillwell
+
+'''
+
+EXAMPLES = '''
+'''
+
+def _get_pathvals(module, paths):
+    ''' get values '''
+    import pipes
+
+    data = "\n".join("get %s" % (p) for p in paths)
+
+    cmd = ["echo", pipes.quote(data), "|", module.get_bin_path('augtool', True)]
+
+    rc, out, err = module.run_command(' '.join(cmd), use_unsafe_shell=True)
+
+    if rc != 0:
+        module.fail_json(msg=err)
+
+    return [tuple(x.strip() for x in line.split('=', 1)) 
+            for line in out.splitlines() if line.strip() != ""]
+
+
+def _set_pathvals(module, pathvals):
+    ''' set values '''
+    import pipes
+
+    data = "\n".join("set %s \"%s\"" % (p, v) for p, v in pathvals)
+
+    cmd = ["echo", pipes.quote(data), "|", 
+           module.get_bin_path('augtool', True), '-s']
+
+    rc, out, err = module.run_command(' '.join(cmd), use_unsafe_shell=True)
+
+    if rc != 0:
+        module.fail_json(msg=err)
+
+    return rc
+
+def main():
+    ''' main function '''
+
+    module = AnsibleModule(
+        argument_spec = dict(
+           paths = dict(default=None),
+        ),
+        supports_check_mode=True,
+    )
+
+    # not impossible that stripping could cause problems...
+    curr = [(str(k).strip(), str(v).strip()) for kv in [d.items() for d 
+                                                    in module.params['paths']] 
+                                             for k, v in kv]
+
+    prev = _get_pathvals(module, [k for (k, v) in curr])
+
+    changed = False
+    msg = ''
+
+    if str(curr) != str(prev):
+
+        changed = True
+
+        if not module.check_mode:
+            rc = _set_pathvals(module, curr)
+
+            if rc:
+                module.fail_json(msg=e)
+        
+        module.exit_json(changed=changed, msg=msg, current=curr, previous=prev)
+
+    module.exit_json(changed=changed, msg=msg, current=prev)
+
+# import module snippets
+from ansible.module_utils.basic import *
+
+main()
