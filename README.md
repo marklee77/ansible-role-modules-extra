@@ -1,25 +1,9 @@
-marklee77.mariadb
-=================
+marklee77.extra-modules
+=======================
 
-[![Build Status](https://travis-ci.org/marklee77/ansible-role-mariadb.svg?branch=master)](https://travis-ci.org/marklee77/ansible-role-mariadb)
-
-MariaDB role for Ubuntu.
-
-Role Variables
---------------
-
-- mariadb_repository_mirror: mariadb repository mirror, set to 
-                             http://mirrors.coreix.net/mariadb by default.
-- mariadb_version: mariadb version, set to 10.0 by default.
-- mariadb_root_mysql_password: root mysql password; set to a random value by 
-                               default.
-
-Example Playbook
--------------------------
-
-    - hosts: all
-      roles:
-        - marklee77.mariadb
+The purpose of this role is to serve as a central place to store extra ansible
+modules. It should not be deployed by itself, but rather set as a dependency for
+other roles.
 
 License
 -------
