@@ -35,7 +35,7 @@ options:
    ldap_uri:
       - uri for ldap server
     required: false
-    default: null
+    default: ldapi:///
     aliases: []
   bind_dn:
     description:
@@ -55,9 +55,24 @@ options:
     required: true
     default: null
     aliases: []
-  attrs:
+  add_attributes:
     description:
-      - list of dictionaries giving key-value pairs to assign
+      - list of dictionaries giving key-value pairs representing attributes to
+        add
+    required: false
+    default: []
+    aliases: []
+  replace_attributes:
+    description:
+      - list of dictionaries giving key-value pairs representing attributes to
+        replace
+    required: false
+    default: []
+    aliases: []
+  delete_attributes:
+    description:
+      - list of strings giving key names or dictionaries giving key-value pairs 
+        representing attributes to delete
     required: false
     default: []
     aliases: []
@@ -75,13 +90,16 @@ author: Mark Stillwell
 EXAMPLES = '''
 '''
 
+from itertools import chain
+
 def _get_entry(module, cmdparams, entry_dn):
     ''' get entry from ldap and return a dictionary '''
 
     cmd = [module.get_bin_path('ldapsearch', True)] + cmdparams
-    cmd += ["-LLL", "-b", entry_dn]
+    cmd += ['-LLL', '-o', 'ldif-wrap=no']
+    cmd += ['-b', entry_dn]
 
-    rc, out, err = module.run_command(' '.join(cmd))
+    rc, out, err = module.run_command(cmd)
 
     # not found
     if rc == 32:
@@ -90,34 +108,53 @@ def _get_entry(module, cmdparams, entry_dn):
     if rc != 0:
         module.fail_json(msg=err)
 
+    return set(tuple(x.strip() for x in line.split(':', 1)) 
+               for line in out.splitlines() if line.strip() != "")
 
-    return [tuple(x.strip() for x in line.split(':', 1)) 
-            for line in out.splitlines() if line.strip() != ""]
 
-
-def _add_entry(module, cmdparams, curr):
+def _add_entry(module, cmdparams, entry_dn, attributes):
     ''' add an entry to ldap '''
     import pipes
 
-    data = "\n".join("%s: %s" % (k, v) for k, v in curr)
+    ldif = 'dn: {}\n'.format(entry_dn)
 
-    cmd = ["echo", pipes.quote(data), "|", 
-           module.get_bin_path('ldapadd', True)] + cmdparams
+    ldif += '\n'.join('{}: {}'.format(*a) for a in attributes)
 
-    return module.run_command(' '.join(cmd), use_unsafe_shell=True)
+    cmd = ' '.join(["echo", pipes.quote(ldif), "|", 
+                   module.get_bin_path('ldapadd', True)] + cmdparams)
 
-def _modify_entry(module, cmdparams, prev, curr):
+    rc, out, err = module.run_command(cmd, use_unsafe_shell=True)
+
+    if rc != 0:
+        module.fail_json(msg=err)
+
+    return
+
+
+def _modify_entry(module, cmdparams, entry_dn, add_attrpairs, replace_attrpairs, 
+                  delete_attrpairs, delete_attrnames):
     ''' update an entry in ldap '''
     import pipes
 
-    data = "dn: %s\nchangetype: modify\n" % prev[0]
-    data += "\n-\n".join(["%s: %s" % (k, v) for kv in [d.items() for d in attrs] 
-                                            for k, v in kv])
+    ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn)
 
-    cmd = ["echo", pipes.quote(data), "|", 
-            module.get_bin_path('ldapmodify', True)] + cmdparams
+    data = []
+    data += ["add: {0}\n{0}: {1}".format(*a) for a in add_attrpairs]
+    data += ["replace: {0}\n{0}: {1}".format(*a) for a in replace_attrpairs]
+    data += ["delete: {0}\n{0}: {1}".format(*a) for a in delete_attrpairs]
+    data += ["delete: {}".format(a) for a in delete_attrnames]
 
-    return module.run_command(' '.join(cmd), use_unsafe_shell=True)
+    ldif += '\n-\n'.join(data)
+
+    cmd = ' '.join(["echo", pipes.quote(ldif), "|", 
+                   module.get_bin_path('ldapmodify', True)] + cmdparams)
+
+    rc, out, err = module.run_command(cmd, use_unsafe_shell=True)
+
+    if rc != 0:
+        module.fail_json(msg=err)
+
+    return
 
 
 def _delete_entry(module, cmdparams, entry_dn):
@@ -125,7 +162,9 @@ def _delete_entry(module, cmdparams, entry_dn):
     cmd = [module.get_bin_path('ldapdelete', True)] + cmdparams
     cmd += [entry_dn]
 
-    return module.run_command(' '.join(cmd))
+    rc, out, err = module.run_command(cmd)
+
+    return 
 
 
 def main():
@@ -133,78 +172,87 @@ def main():
 
     module = AnsibleModule(
         argument_spec = dict(
-           ldap_uri = dict(type='str'),
-           bind_dn = dict(type='str'),
-           bind_password = dict(type='str'),
-           entry_dn = dict(required=True, type='str'),
-           attrs = dict(default=None),
-           state = dict(required=False, type='str', default='present',
-                        choices=['present', 'absent'])
+            ldap_uri = dict(type='str', default='ldapi:///'),
+            bind_dn = dict(type='str'),
+            bind_password = dict(type='str'),
+            entry_dn = dict(required=True, type='str'),
+            add_attributes = dict(type='list', default=[]),
+            replace_attributes = dict(type='list', default=[]),
+            delete_attributes = dict(type='list', default=[]),
+            state = dict(type='str', choices=['present', 'absent'], 
+                         default='present')
         ),
         supports_check_mode=True,
     )
 
     ldap_uri = module.params['ldap_uri']
-    bind_dn  = module.params['bind_dn']
+    bind_dn = module.params['bind_dn']
     bind_password = module.params['bind_password']
 
-    cmdparams = []
-
-    if ldap_uri is not None:
-
-        if ldap_uri == "ldapi:///" and bind_password is None:
-            cmdparams += [ '-Q', '-Y', 'EXTERNAL' ]
-
-        cmdparams += ["-H", ldap_uri]
+    cmdparams = ['-H', ldap_uri]
 
     if bind_dn is not None:
-        cmdparams += ["-D", bind_dn]
+        cmdparams += ['-D', bind_dn]
 
     if bind_password is not None:
-        cmdparams += ["-w", bind_password]
+        cmdparams += ['-w', bind_password]
+    elif ldap_uri == "ldapi:///" :
+        cmdparams += ['-QY', 'EXTERNAL']
 
     entry_dn = module.params['entry_dn']
-    attrs = module.params['attrs']
     state = module.params['state']
 
-    prev = _get_entry(module, cmdparams, entry_dn)
-    prev_str = ""
-    if prev is not None:
-        prev_str = str(sorted(prev))
-
-    curr = None
-    curr_str = ""
-    if state != 'absent' and attrs is not None:
-        curr = [('dn', entry_dn)] + [tuple(map(str, d.items()[0])) 
-                                     for d in attrs]
-        curr_str = str(sorted(curr))
+    previous = _get_entry(module, cmdparams, entry_dn)
 
     changed = False
     msg = ''
 
-    if prev_str != curr_str:
+    if state == 'present':
 
-        changed = True
+        add_attrpairs = set(a.items()[0] 
+                            for a in module.params['add_attributes'] 
+                            if type(a) is dict)
+        replace_attrpairs = set(a.items()[0] 
+                                for a in module.params['replace_attributes'] 
+                                if type(a) is dict)
 
-        if not module.check_mode:
-            rc = None
-            if state == 'present':
-                if prev is None:
-                    rc, msg, e = _add_entry(module, cmdparams, curr)
-                else:
-                    rc, msg, e = _modify_entry(module, cmdparams, prev, curr)
-            else:
-                    rc, msg, e = _delete_entry(module, cmdparams, entry_dn)
+        if previous is None:
+            changed = True
+            if not module.check_mode:
+                _add_entry(module, cmdparams, entry_dn, 
+                           add_attrpairs + replace_attrpairs)
+        else:
 
-            if rc:
-                module.fail_json(msg=e)
-        
+            delete_attrpairs = set(a.items()[0] 
+                                   for a in module.params['delete_attributes'] 
+                                   if type(a) is dict)
+            delete_attrnames = set(a for a in module.params['delete_attributes'] 
+                                   if type(a) is str)
 
-        curr = _get_entry(module, cmdparams, entry_dn)
+            tmpadd_attrpairs = add_attrpairs - previous
+            tmpreplace_attrpairs = replace_attrpairs - previous
+            tmpdelete_attrpairs = delete_attrpairs & previous
+            tmpdelete_attrnames = delete_attrnames & set(n for n, v in previous)
 
-        module.exit_json(changed=changed, msg=msg, current=curr, previous=prev)
+            if (tmpadd_attrpairs or tmpreplace_attrpairs 
+                or tmpdelete_attrpairs or tmpdelete_attrnames):
+                changed = True
+                if not module.check_mode:
+                    _modify_entry(module, cmdparams, entry_dn, 
+                                  tmpadd_attrpairs, tmpreplace_attrpairs, 
+                                  tmpdelete_attrpairs, tmpdelete_attrnames)
 
-    module.exit_json(changed=changed, msg=msg, current=prev)
+    elif state == 'absent':
+        if previous is not None:
+            changed = True
+            if not module.check_mode:
+                _delete_entry(module, cmdparams, entry_dn)
+
+    else:
+        module.fail_json(msg='illegal state')
+
+    current = str(sorted(_get_entry(module, cmdparams, entry_dn)))
+    module.exit_json(changed=changed, msg=msg, current=current)
 
 # import module snippets
 from ansible.module_utils.basic import *
