@@ -227,7 +227,7 @@ def main():
                                    for a in module.params['delete_attributes'] 
                                    if type(a) is dict)
             delete_attrnames = set(a for a in module.params['delete_attributes'] 
-                                   if type(a) is str)
+                                   if type(a) is not dict)
 
             tmpadd_attrpairs = add_attrpairs - previous
             tmpreplace_attrpairs = replace_attrpairs - previous
