@@ -220,7 +220,7 @@ def main():
             changed = True
             if not module.check_mode:
                 _add_entry(module, cmdparams, entry_dn, 
-                           add_attrpairs + replace_attrpairs)
+                           add_attrpairs | replace_attrpairs)
         else:
 
             delete_attrpairs = set(a.items()[0] 
