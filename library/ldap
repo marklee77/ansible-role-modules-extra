@@ -209,10 +209,10 @@ def main():
 
     if state == 'present':
 
-        add_attrpairs = set(a.items()[0] 
+        add_attrpairs = set(tuple(str(x) for x in a.items()[0])
                             for a in module.params['add_attributes'] 
                             if type(a) is dict)
-        replace_attrpairs = set(a.items()[0] 
+        replace_attrpairs = set(tuple(str(x) for x in a.items()[0])
                                 for a in module.params['replace_attributes'] 
                                 if type(a) is dict)
 
@@ -223,7 +223,7 @@ def main():
                            add_attrpairs | replace_attrpairs)
         else:
 
-            delete_attrpairs = set(a.items()[0] 
+            delete_attrpairs = set(tuple(str(x) for x in a.items()[0])
                                    for a in module.params['delete_attributes'] 
                                    if type(a) is dict)
             delete_attrnames = set(a for a in module.params['delete_attributes'] 
