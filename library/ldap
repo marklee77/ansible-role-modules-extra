@@ -82,8 +82,7 @@ options:
   strip_braces:
       - whether or not to strip braces and braced text from returned attribute values
       required: false
-      default: 'no'
-      choices: [ 'yes', 'no' ]
+      default: False
       aliases: []
   modify_action:
       - default action to perform against matching attributes
@@ -131,7 +130,7 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
     attributes = set(tuple(x.strip() for x in line.split(':', 1)) 
                      for line in out.splitlines() if line.strip() != "")
 
-    if attributes and strip_braces == 'yes':
+    if attributes and strip_braces:
         import re
         attributes = set(tuple(re.sub('{.*}', '', x) for x in a) 
                          for a in attributes)
@@ -207,8 +206,7 @@ def main():
             entry_dn = dict(required=True, type='str'),
             search_base = dict(required=False, type='str'),
             search_filter = dict(required=False, type='str'),
-            strip_braces = dict(type='str', choices=['yes', 'no'], 
-                                default='no'),
+            strip_braces = dict(type='bool', default=False),
             attributes = dict(type='list', default=[]),
             modify_action = dict(type='str', 
                                  choices=['add', 'replace', 'delete'], 
