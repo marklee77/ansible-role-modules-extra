@@ -210,6 +210,8 @@ def main():
     attrnames = set(str(a) 
                     for a in module.params['attributes'] if type(a) is not dict)
 
+    modaction = module.params['modaction']
+
     if modaction != 'delete' and attrnames:
         module.fail_json(msg='except when deleting, all attributes must be given as name: value pairs.')
 
