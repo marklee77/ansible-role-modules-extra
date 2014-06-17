@@ -131,7 +131,7 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
     attributes = set(tuple(x.strip() for x in line.split(':', 1)) 
                      for line in out.splitlines() if line.strip() != "")
 
-    if strip_braces == 'yes':
+    if attributes and strip_braces == 'yes':
         import re
         attributes = set(tuple(re.sub('{.*}', '', x) for x in a) 
                          for a in attributes)
