@@ -61,16 +61,34 @@ options:
     required: true
     default: null
     aliases: []
+  search_base:
+    description:
+      - base to use when searching instead of looking up dn directory
+    required: false
+    default: null
+    aliases: []
+  search_filter:
+    description:
+      - filter to use when searching instead of looking up dn directory
+    required: false
+    default: null
+    aliases: []
   attributes:
     description:
       - list of attribute names or dictionaries giving key-value pairs
     required: false
     default: []
     aliases: []
-  modaction:
+  strip_braces:
+      - whether or not to strip braces and braced text from returned attribute values
+      required: false
+      default: 'no'
+      choices: [ 'yes', 'no' ]
+      aliases: []
+  modify_action:
       - default action to perform against matching attributes
       required: false
-      default: 'replace'
+      default: 'add'
       choices: [ 'add', 'replace', 'delete' ]
       aliases: []
   state:
@@ -89,12 +107,17 @@ EXAMPLES = '''
 
 from itertools import chain
 
-def _get_entry(module, cmdparams, entry_dn):
+def _get_entry(module, cmdparams, entry_dn, search_base, search_filter, 
+               strip_braces):
     ''' get entry from ldap and return a dictionary '''
 
     cmd = [module.get_bin_path('ldapsearch', True)] + cmdparams
     cmd += ['-LLL', '-o', 'ldif-wrap=no']
-    cmd += ['-b', entry_dn]
+    
+    if search_base == '':
+        cmd += ['-b', entry_dn, '-s', 'base']
+    else:
+        cmd += ['-b', search_base, search_filter]
 
     rc, out, err = module.run_command(cmd)
 
@@ -105,9 +128,15 @@ def _get_entry(module, cmdparams, entry_dn):
     if rc != 0:
         module.fail_json(msg=err)
 
-    return set(tuple(x.strip() for x in line.split(':', 1)) 
-               for line in out.splitlines() if line.strip() != "")
+    attributes = set(tuple(x.strip() for x in line.split(':', 1)) 
+                     for line in out.splitlines() if line.strip() != "")
 
+    if strip_braces == 'yes':
+        import re
+        attributes = set(tuple(re.sub('{.*}', '', x) for x in a) 
+                         for a in attributes)
+
+    return attributes
 
 def _add_entry(module, cmdparams, entry_dn, attributes):
     ''' add an entry to ldap '''
@@ -128,14 +157,15 @@ def _add_entry(module, cmdparams, entry_dn, attributes):
     return
 
 
-def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames, modaction):
+def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames, 
+                  modify_action):
     ''' update an entry in ldap '''
     import pipes
 
     ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn)
 
     data = []
-    data += [modaction + ": {0}\n{0}: {1}".format(*a) for a in attrpairs]
+    data += [modify_action + ": {0}\n{0}: {1}".format(*a) for a in attrpairs]
     data += ["delete: {}".format(a) for a in attrnames]
 
     ldif += '\n-\n'.join(data)
@@ -175,9 +205,14 @@ def main():
             bind_dn = dict(type='str'),
             bind_password = dict(type='str'),
             entry_dn = dict(required=True, type='str'),
+            search_base = dict(required=False, type='str'),
+            search_filter = dict(required=False, type='str'),
+            strip_braces = dict(type='str', choices=['yes', 'no'], 
+                                default='no'),
             attributes = dict(type='list', default=[]),
-            modaction = dict(type='str', choices=['add', 'replace', 'delete'],
-                             default='replace'),
+            modify_action = dict(type='str', 
+                                 choices=['add', 'replace', 'delete'], 
+                                 default='add'),
             state = dict(type='str', choices=['present', 'absent'], 
                          default='present')
         ),
@@ -210,12 +245,13 @@ def main():
     attrnames = set(str(a) 
                     for a in module.params['attributes'] if type(a) is not dict)
 
-    modaction = module.params['modaction']
+    modify_action = module.params['modify_action']
 
-    if modaction != 'delete' and attrnames:
+    if modify_action != 'delete' and attrnames:
         module.fail_json(msg='except when deleting, all attributes must be given as name: value pairs.')
 
-    previous = _get_entry(module, cmdparams, entry_dn)
+    previous = _get_entry(module, cmdparams, entry_dn, 
+                          search_base, search_filter, strip_braces)
 
     changed = False
     msg = ''
@@ -225,12 +261,12 @@ def main():
         if previous is None:
             changed = True
             if not module.check_mode:
-                if modaction == 'delete':
+                if modify_action == 'delete':
                     attrpairs = set()
                 _add_entry(module, cmdparams, entry_dn, attrpairs)
         else:
 
-            if modaction == 'delete':
+            if modify_action == 'delete':
                 attrpairs &= previous
                 attrnames &= set(n for n, v in previous)
             else:
@@ -240,7 +276,7 @@ def main():
                 changed = True
                 if not module.check_mode:
                     _modify_entry(module, cmdparams, 
-                                  entry_dn, attrpairs, attrnames, modaction)
+                                  entry_dn, attrpairs, attrnames, modify_action)
 
     elif state == 'absent':
         if previous is not None:
@@ -248,7 +284,8 @@ def main():
             if not module.check_mode:
                 _delete_entry(module, cmdparams, entry_dn)
 
-    current = str(sorted(_get_entry(module, cmdparams, entry_dn)))
+    current = str(_get_entry(module, cmdparams, entry_dn, 
+                             search_base, search_filter, strip_braces))
     module.exit_json(changed=changed, msg=msg, current=current)
 
 # import module snippets
