@@ -238,7 +238,11 @@ def main():
         cmdparams += ['-ZZ']
 
     entry_dn = module.params['entry_dn']
+    search_base = module.params['search_base']
+    search_filter = module.params['search_filter']
     state = module.params['state']
+
+    strip_braces = module.params['strip_braces']
 
     attrpairs = set(tuple(str(x) for x in a.items()[0][0:2]) 
                     for a in module.params['attributes'] if type(a) is dict)
