@@ -32,11 +32,17 @@ notes:
     - This module requires the command line ldap utilities.
 options:
   name:
-   ldap_uri:
+  ldap_uri:
       - uri for ldap server
     required: false
     default: ldapi:///
     aliases: []
+  use_tls:
+      - whether the connection should use tls to secure the connection
+      required: false
+      default: 'smart'
+      choices: [ 'yes', 'no', 'smart' ]
+      aliases: []
   bind_dn:
     description:
       - dn to use to bind to ldap server
@@ -55,27 +61,18 @@ options:
     required: true
     default: null
     aliases: []
-  add_attributes:
+  attributes:
     description:
-      - list of dictionaries giving key-value pairs representing attributes to
-        add
+      - list of attribute names or dictionaries giving key-value pairs
     required: false
     default: []
     aliases: []
-  replace_attributes:
-    description:
-      - list of dictionaries giving key-value pairs representing attributes to
-        replace
-    required: false
-    default: []
-    aliases: []
-  delete_attributes:
-    description:
-      - list of strings giving key names or dictionaries giving key-value pairs 
-        representing attributes to delete
-    required: false
-    default: []
-    aliases: []
+  modaction:
+      - default action to perform against matching attributes
+      required: false
+      default: 'replace'
+      choices: [ 'add', 'replace', 'delete' ]
+      aliases: []
   state:
     description:
       - desired state of ldap entry
@@ -131,18 +128,15 @@ def _add_entry(module, cmdparams, entry_dn, attributes):
     return
 
 
-def _modify_entry(module, cmdparams, entry_dn, add_attrpairs, replace_attrpairs, 
-                  delete_attrpairs, delete_attrnames):
+def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames, modaction):
     ''' update an entry in ldap '''
     import pipes
 
     ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn)
 
     data = []
-    data += ["add: {0}\n{0}: {1}".format(*a) for a in add_attrpairs]
-    data += ["replace: {0}\n{0}: {1}".format(*a) for a in replace_attrpairs]
-    data += ["delete: {0}\n{0}: {1}".format(*a) for a in delete_attrpairs]
-    data += ["delete: {}".format(a) for a in delete_attrnames]
+    data += [modaction + ": {0}\n{0}: {1}".format(*a) for a in attrpairs]
+    data += ["delete: {}".format(a) for a in attrnames]
 
     ldif += '\n-\n'.join(data)
 
@@ -164,6 +158,9 @@ def _delete_entry(module, cmdparams, entry_dn):
 
     rc, out, err = module.run_command(cmd)
 
+    if rc != 0:
+        module.fail_json(msg=err)
+
     return 
 
 
@@ -173,12 +170,14 @@ def main():
     module = AnsibleModule(
         argument_spec = dict(
             ldap_uri = dict(type='str', default='ldapi:///'),
+            use_tls = dict(type='str', choices=['yes', 'no', 'smart'], 
+                           default='smart')
             bind_dn = dict(type='str'),
             bind_password = dict(type='str'),
             entry_dn = dict(required=True, type='str'),
-            add_attributes = dict(type='list', default=[]),
-            replace_attributes = dict(type='list', default=[]),
-            delete_attributes = dict(type='list', default=[]),
+            attributes = dict(type='list', default=[]),
+            modaction = dict(type='str', choices=['add', 'replace', 'delete'],
+                             default='replace')
             state = dict(type='str', choices=['present', 'absent'], 
                          default='present')
         ),
@@ -186,6 +185,7 @@ def main():
     )
 
     ldap_uri = module.params['ldap_uri']
+    use_tls = module.params['use_tls']
     bind_dn = module.params['bind_dn']
     bind_password = module.params['bind_password']
 
@@ -199,8 +199,19 @@ def main():
     elif ldap_uri == "ldapi:///" :
         cmdparams += ['-QY', 'EXTERNAL']
 
+    if use_tls == 'yes' or (use_tls == 'smart' and ldap_uri != 'ldapi:///'):
+        cmdparams += ['-ZZ']
+
     entry_dn = module.params['entry_dn']
     state = module.params['state']
+
+    attrpairs = set(tuple(str(x) for x in a.items()[0][0:2]) 
+                    for a in module.params['attributes'] if type(a) is dict)
+    attrnames = set(str(a) 
+                    for a in module.params['attributes'] if type(a) is not dict)
+
+    if modaction != 'delete' and attrnames:
+        module.fail_json(msg='except when deleting, all attributes must be given as name: value pairs.')
 
     previous = _get_entry(module, cmdparams, entry_dn)
 
@@ -209,47 +220,31 @@ def main():
 
     if state == 'present':
 
-        add_attrpairs = set(tuple(str(x) for x in a.items()[0])
-                            for a in module.params['add_attributes'] 
-                            if type(a) is dict)
-        replace_attrpairs = set(tuple(str(x) for x in a.items()[0])
-                                for a in module.params['replace_attributes'] 
-                                if type(a) is dict)
-
         if previous is None:
             changed = True
             if not module.check_mode:
-                _add_entry(module, cmdparams, entry_dn, 
-                           add_attrpairs | replace_attrpairs)
+                if modaction == 'delete':
+                    attrpairs = set()
+                _add_entry(module, cmdparams, entry_dn, attrpairs)
         else:
 
-            delete_attrpairs = set(tuple(str(x) for x in a.items()[0])
-                                   for a in module.params['delete_attributes'] 
-                                   if type(a) is dict)
-            delete_attrnames = set(a for a in module.params['delete_attributes'] 
-                                   if type(a) is not dict)
+            if modaction == 'delete':
+                attrpairs &= previous
+                attrnames &= set(n for n, v in previous)
+            else:
+                attrpairs -= previous
 
-            tmpadd_attrpairs = add_attrpairs - previous
-            tmpreplace_attrpairs = replace_attrpairs - previous
-            tmpdelete_attrpairs = delete_attrpairs & previous
-            tmpdelete_attrnames = delete_attrnames & set(n for n, v in previous)
-
-            if (tmpadd_attrpairs or tmpreplace_attrpairs 
-                or tmpdelete_attrpairs or tmpdelete_attrnames):
+            if attrpairs or attrnames:
                 changed = True
                 if not module.check_mode:
-                    _modify_entry(module, cmdparams, entry_dn, 
-                                  tmpadd_attrpairs, tmpreplace_attrpairs, 
-                                  tmpdelete_attrpairs, tmpdelete_attrnames)
+                    _modify_entry(module, cmdparams, 
+                                  entry_dn, attrpairs, attrnames)
 
     elif state == 'absent':
         if previous is not None:
             changed = True
             if not module.check_mode:
                 _delete_entry(module, cmdparams, entry_dn)
-
-    else:
-        module.fail_json(msg='illegal state')
 
     current = str(sorted(_get_entry(module, cmdparams, entry_dn)))
     module.exit_json(changed=changed, msg=msg, current=current)
