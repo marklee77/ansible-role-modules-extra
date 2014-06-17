@@ -171,13 +171,13 @@ def main():
         argument_spec = dict(
             ldap_uri = dict(type='str', default='ldapi:///'),
             use_tls = dict(type='str', choices=['yes', 'no', 'smart'], 
-                           default='smart')
+                           default='smart'),
             bind_dn = dict(type='str'),
             bind_password = dict(type='str'),
             entry_dn = dict(required=True, type='str'),
             attributes = dict(type='list', default=[]),
             modaction = dict(type='str', choices=['add', 'replace', 'delete'],
-                             default='replace')
+                             default='replace'),
             state = dict(type='str', choices=['present', 'absent'], 
                          default='present')
         ),
