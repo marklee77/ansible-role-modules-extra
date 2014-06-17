@@ -130,6 +130,10 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
     attributes = set(tuple(x.strip() for x in line.split(':', 1)) 
                      for line in out.splitlines() if line.strip() != "")
 
+    # a successful search should return at least a dn
+    if not attributes:
+        return None
+
     if attributes and strip_braces:
         import re
         attributes = set(tuple(re.sub('{.*}', '', x) for x in a) 
