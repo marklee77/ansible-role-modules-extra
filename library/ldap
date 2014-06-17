@@ -240,7 +240,7 @@ def main():
                 changed = True
                 if not module.check_mode:
                     _modify_entry(module, cmdparams, 
-                                  entry_dn, attrpairs, attrnames)
+                                  entry_dn, attrpairs, attrnames, modaction)
 
     elif state == 'absent':
         if previous is not None:
