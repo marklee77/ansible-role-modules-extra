@@ -113,7 +113,7 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
     cmd = [module.get_bin_path('ldapsearch', True)] + cmdparams
     cmd += ['-LLL', '-o', 'ldif-wrap=no']
 
-    if search_base:
+    if search_base and search_filter:
         cmd += ['-b', search_base, search_filter]
     else:
         cmd += ['-b', entry_dn, '-s', 'base']
