@@ -327,7 +327,7 @@ def main():
     current = module.jsonify([tuple(a) for a in 
                               _get_entry(module, cmdparams, entry_dn, 
                                          search_base, search_filter, 
-                                         strip_braces]))
+                                         strip_braces)])
     module.exit_json(changed=changed, msg=msg, current=current)
 
 # import module snippets
