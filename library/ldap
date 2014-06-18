@@ -24,9 +24,9 @@ along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 DOCUMENTATION = '''
 ---
 module: ldap
-short_description: look up, add, update, or delete an ldap entry
+short_description: add, update, or delete an ldap entry
 description:
-     - use this module to look up, add, update, or delete an ldap entry
+     - use this module to add, update, or delete an ldap entry
 version_added: "1.6"
 notes:
     - This module requires the command line ldap utilities.
@@ -102,9 +102,43 @@ author: Mark Stillwell
 '''
 
 EXAMPLES = '''
-'''
 
-from itertools import chain
+- name: ensure ssl is configured in ldap if certificates are available
+  ldap:
+    entry_dn: cn=config
+    attributes:
+      - olcTLSCipherSuite: "{{ slapd_ssl_cipher_suite }}"
+      - olcTLSCACertificateFile: "{{ slapd_ssl_ca_cert_file }}"
+      - olcTLSCertificateFile: "{{ slapd_ssl_cert_file }}"
+      - olcTLSCertificateKeyFile: "{{ slapd_ssl_key_file }}"
+    state: present
+  when: slapd_ssl_cert_file != "" and slapd_ssl_key_file != ""
+
+- name: ensure ldap membership overlay module is enabled
+  ldap:
+    entry_dn: cn=module,cn=config
+    search_base: cn=config
+    search_filter: '(olcModuleLoad~=memberof.la)'
+    strip_braces: yes
+    attributes:
+      - cn: module
+      - objectClass: top
+      - objectClass: olcModuleList
+      - olcModuleLoad: memberof.la
+      - olcModulePath: /usr/lib/ldap
+    state: present
+ 
+- name: ensure expected organizational units are present in ldap
+  ldap:
+    bind_dn: cn=admin,{{ ldap_base_dn }}
+    bind_password: "{{ ldap_admin_password }}"
+    entry_dn: ou={{ item }},{{ ldap_base_dn }}
+    attributes:
+      - objectClass: organizationalUnit
+      - ou: "{{ item }}"
+    state: present
+ 
+'''
 
 def _get_entry(module, cmdparams, entry_dn, search_base, search_filter, 
                strip_braces):
@@ -290,8 +324,9 @@ def main():
             if not module.check_mode:
                 _delete_entry(module, cmdparams, entry_dn)
 
-    current = str(_get_entry(module, cmdparams, entry_dn, 
-                             search_base, search_filter, strip_braces))
+    current = module.jsonify(
+        _get_entry(module, cmdparams, 
+                   entry_dn, search_base, search_filter, strip_braces))
     module.exit_json(changed=changed, msg=msg, current=current)
 
 # import module snippets
