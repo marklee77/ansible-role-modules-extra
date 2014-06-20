@@ -209,8 +209,6 @@ def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames,
     ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn) 
     ldif += '\n-\n'.join(changes)
 
-    module.fail_json(msg=ldif)
-
     cmd = ' '.join(["echo", pipes.quote(ldif), "|", 
                    module.get_bin_path('ldapmodify', True)] + cmdparams)
 
