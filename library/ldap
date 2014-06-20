@@ -199,11 +199,11 @@ def _add_entry(module, cmdparams, entry_dn, attributes):
 def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames, 
                   modify_action):
     ''' update an entry in ldap '''
-    import iteritems, pipes
+    import itertools, pipes
 
     changes = ['\n'.join(["{}: {}".format(modify_action, k)] + 
                          ["{}: {}".format(*a) for a in g])
-               for k, g in iteritems.groupby(sorted(list(attrpairs)), 
+               for k, g in itertools.groupby(sorted(list(attrpairs)), 
                                              lambda a: a[0])]
     changes += ["{}: {}".format(modify_action, a) for a in attrnames]
 
@@ -246,9 +246,9 @@ def main():
                            default='smart'),
             bind_dn = dict(type='str'),
             bind_password = dict(type='str'),
-            entry_dn = dict(required=True, type='str'),
-            search_base = dict(required=False, type='str'),
-            search_filter = dict(required=False, type='str'),
+            entry_dn = dict(type='str'),
+            search_base = dict(type='str'),
+            search_filter = dict(type='str'),
             strip_braces = dict(type='bool', default=False),
             attributes = dict(type='list', default=[]),
             modify_action = dict(type='str', 
