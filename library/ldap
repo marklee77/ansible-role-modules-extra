@@ -209,7 +209,7 @@ def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames,
     ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn) 
     ldif += '\n-\n'.join(changes)
 
-    #module.fail_json(msg=ldif)
+    module.fail_json(msg=ldif)
 
     cmd = ' '.join(["echo", pipes.quote(ldif), "|", 
                    module.get_bin_path('ldapmodify', True)] + cmdparams)
@@ -297,6 +297,10 @@ def main():
     previous = _get_entry(module, cmdparams, entry_dn, 
                           search_base, search_filter, strip_braces)
 
+    if search_base and search_filter and previous: 
+        # entry dn may be changed from default if we have searched for the entry
+        entry_dn = [value for key, value in previous if key == "dn"][0]
+
     changed = False
     msg = ''
 
@@ -313,8 +317,14 @@ def main():
             if modify_action == 'delete':
                 attrpairs &= previous
                 attrnames &= set(n for n, v in previous)
-            else:
+            elif modify_action == 'add':
                 attrpairs -= previous
+            elif modify_action == 'replace':
+                tmpattrpairs = attrpairs - previous
+                tmpattrnames = set(n for n, v in tmpattrpairs)
+                attrpairs = set(a for a in attrpairs if a[0] in tmpattrnames)
+            else:
+                module.fail_json(msg='unknown modify action: ' + modify_action)
 
             if attrpairs or attrnames:
                 changed = True
