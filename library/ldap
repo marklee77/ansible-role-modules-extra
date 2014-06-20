@@ -149,8 +149,10 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
 
     if search_base and search_filter:
         cmd += ['-b', search_base, search_filter]
-    else:
+    elif entry_dn:
         cmd += ['-b', entry_dn, '-s', 'base']
+    else:
+        module.fail_json(msg='either entry_dn or search_base and search_filter must be specified')
 
     rc, out, err = module.run_command(cmd)
 
@@ -197,15 +199,18 @@ def _add_entry(module, cmdparams, entry_dn, attributes):
 def _modify_entry(module, cmdparams, entry_dn, attrpairs, attrnames, 
                   modify_action):
     ''' update an entry in ldap '''
-    import pipes
+    import iteritems, pipes
 
-    ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn)
+    changes = ['\n'.join(["{}: {}".format(modify_action, k)] + 
+                         ["{}: {}".format(*a) for a in g])
+               for k, g in iteritems.groupby(sorted(list(attrpairs)), 
+                                             lambda a: a[0])]
+    changes += ["{}: {}".format(modify_action, a) for a in attrnames]
 
-    data = []
-    data += [modify_action + ": {0}\n{0}: {1}".format(*a) for a in attrpairs]
-    data += ["delete: {}".format(a) for a in attrnames]
+    ldif = 'dn: {}\nchangetype: modify\n'.format(entry_dn) 
+    ldif += '\n-\n'.join(changes)
 
-    ldif += '\n-\n'.join(data)
+    module.fail_json(msg=ldif)
 
     cmd = ' '.join(["echo", pipes.quote(ldif), "|", 
                    module.get_bin_path('ldapmodify', True)] + cmdparams)
