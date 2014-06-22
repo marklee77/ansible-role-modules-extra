@@ -143,6 +143,7 @@ EXAMPLES = '''
 def _get_entry(module, cmdparams, entry_dn, search_base, search_filter, 
                strip_braces):
     ''' get entry from ldap and return a dictionary '''
+    from base64 import b64decode
 
     cmd = [module.get_bin_path('ldapsearch', True)] + cmdparams
     cmd += ['-LLL', '-o', 'ldif-wrap=no']
@@ -165,6 +166,9 @@ def _get_entry(module, cmdparams, entry_dn, search_base, search_filter,
 
     attributes = set(tuple(x.strip() for x in line.split(':', 1)) 
                      for line in out.splitlines() if line.strip() != "")
+
+    attributes = set((k, b64decode(v)) if k == 'userPassword' else (k, v) 
+                     for k, v in attributes)
 
     # a successful search should return at least a dn
     if not attributes:
