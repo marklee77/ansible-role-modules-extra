@@ -13,4 +13,4 @@ GPLv2
 Author Information
 ------------------
 
-http://marklee77.github.io/
+http://stillwell.me
