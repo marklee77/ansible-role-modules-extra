@@ -18,5 +18,6 @@ class FilterModule(object):
     ''' utility filter hash passwords '''
 
     def filters(self):
-        return { 'ssha_password_hash' : ssha_password_hash }
+        return { 'ssha_password_hash' : ssha_password_hash,
+                 'sha512_password_hash' : sha512_password_hash }
 
