@@ -1,6 +1,5 @@
-from netaddr import IPNetwork, IPAddress
-
 def find_ip(*a, **kw):
+    from netaddr import IPNetwork, IPAddress
     facts = a[0]
     network = IPNetwork(a[1])
     for addr_txt in facts['ansible_all_ipv4_addresses']:
@@ -9,6 +8,7 @@ def find_ip(*a, **kw):
     return None
 
 def find_ipnet(*a, **kw):
+    from netaddr import IPNetwork, IPAddress
     facts = a[0]
     network = IPNetwork(a[1])
     for addr_txt in facts['ansible_all_ipv4_addresses']:
@@ -20,6 +20,7 @@ def find_ipnet(*a, **kw):
 # and has an address, if so, look for an interface w/out an ip, otherwise
 # look for the matching one
 def find_netdev(*a, **kw):
+    from netaddr import IPNetwork, IPAddress
     facts = a[0]
     network = IPNetwork(a[1])
     if ('br-ex' in facts['ansible_interfaces'] and 
